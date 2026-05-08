@@ -1,0 +1,183 @@
+// lib/providers/ping_provider.dart
+// Central monitoring state. PingController runs the ping loop,
+// updates results, recalculates metrics, and fires alerts.
+
+import 'dart:async';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/models.dart';
+import '../services/alert_service.dart';
+import '../services/metrics_service.dart';
+import '../services/ping_service.dart';
+import 'settings_provider.dart';
+
+// ─────────────────────────────────────────────────────────────
+// MonitorState — immutable snapshot consumed by the UI
+// ─────────────────────────────────────────────────────────────
+class MonitorState {
+  final bool isRunning;
+  final List<PingResult> results; // capped at 300
+  final NetworkMetrics metrics;
+  final PingResult? lastResult;
+  final String statusMessage;
+
+  const MonitorState({
+    this.isRunning = false,
+    this.results = const [],
+    required this.metrics,
+    this.lastResult,
+    this.statusMessage = 'Ready',
+  });
+
+  MonitorState copyWith({
+    bool? isRunning,
+    List<PingResult>? results,
+    NetworkMetrics? metrics,
+    PingResult? lastResult,
+    String? statusMessage,
+  }) =>
+      MonitorState(
+        isRunning: isRunning ?? this.isRunning,
+        results: results ?? this.results,
+        metrics: metrics ?? this.metrics,
+        lastResult: lastResult ?? this.lastResult,
+        statusMessage: statusMessage ?? this.statusMessage,
+      );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Providers
+// ─────────────────────────────────────────────────────────────
+final monitorProvider =
+    StateNotifierProvider<PingController, MonitorState>((ref) {
+  return PingController(ref);
+});
+
+final isRunningProvider =
+    Provider<bool>((ref) => ref.watch(monitorProvider).isRunning);
+
+final metricsProvider =
+    Provider<NetworkMetrics>((ref) => ref.watch(monitorProvider).metrics);
+
+final lastResultProvider =
+    Provider<PingResult?>((ref) => ref.watch(monitorProvider).lastResult);
+
+final qualityProvider = Provider<NetworkQuality>(
+    (ref) => NetworkQuality.fromMetrics(ref.watch(metricsProvider)));
+
+/// Latency values for the graph (successful pings only, last 60).
+final graphPointsProvider = Provider<List<double>>((ref) {
+  final results = ref.watch(monitorProvider).results;
+  final successful = results.where((r) => r.success).toList();
+  final window =
+      successful.length > 60 ? successful.sublist(successful.length - 60) : successful;
+  return window.map((r) => r.latency.toDouble()).toList();
+});
+
+// ─────────────────────────────────────────────────────────────
+// PingController
+// ─────────────────────────────────────────────────────────────
+class PingController extends StateNotifier<MonitorState> {
+  final Ref _ref;
+  Timer? _timer;
+  DateTime _sessionStart = DateTime.now();
+  bool _wasDown = false; // tracks whether last ping was a failure
+
+  PingController(this._ref)
+      : super(MonitorState(metrics: NetworkMetrics.empty()));
+
+  AppSettings get _settings => _ref.read(settingsProvider);
+
+  // ── Start ──────────────────────────────────────────────────
+  void start() {
+    if (state.isRunning) return;
+    _sessionStart = DateTime.now();
+    _wasDown = false;
+
+    state = MonitorState(
+      isRunning: true,
+      results: const [],
+      metrics: NetworkMetrics.empty(),
+      statusMessage: 'Monitoring ${_settings.host}…',
+    );
+
+    _schedule();
+  }
+
+  void _schedule() {
+    _timer = Timer(Duration(milliseconds: _settings.intervalMs), _doPing);
+  }
+
+  Future<void> _doPing() async {
+    if (!state.isRunning) return;
+
+    PingResult result;
+    try {
+      result = await PingService.ping(
+        host: _settings.host,
+        timeoutMs: _settings.timeoutMs,
+      );
+    } catch (e) {
+      result = PingResult.failed(error: e.toString());
+    }
+
+    // ── Alert logic ───────────────────────────────────────
+    if (!result.success && !_wasDown) {
+      _wasDown = true;
+      AlertService.triggerFailure(
+        sound: _settings.soundEnabled,
+        vibration: _settings.vibrationEnabled,
+        voice: _settings.voiceEnabled,
+      );
+    } else if (result.success && _wasDown) {
+      _wasDown = false;
+      AlertService.triggerRestore(
+        sound: _settings.soundEnabled,
+        vibration: _settings.vibrationEnabled,
+        voice: _settings.voiceEnabled,
+      );
+    }
+
+    // ── Append + cap ──────────────────────────────────────
+    final all = [...state.results, result];
+    final capped = all.length > 300 ? all.sublist(all.length - 300) : all;
+
+    // ── Recalculate metrics ───────────────────────────────
+    final metrics = MetricsService.calculate(capped, _sessionStart);
+
+    state = state.copyWith(
+      results: capped,
+      metrics: metrics,
+      lastResult: result,
+      statusMessage: result.success
+          ? '${_settings.host}  —  ${result.latency}ms'
+          : 'Ping failed: ${result.error ?? "timeout"}',
+    );
+
+    if (state.isRunning) _schedule();
+  }
+
+  // ── Stop ───────────────────────────────────────────────────
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+    state = state.copyWith(
+      isRunning: false,
+      statusMessage: 'Stopped  —  ${state.results.length} pings recorded',
+    );
+  }
+
+  // ── Reset ──────────────────────────────────────────────────
+  void reset() {
+    stop();
+    state = MonitorState(
+      metrics: NetworkMetrics.empty(),
+      statusMessage: 'Ready — tap Start',
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+}
