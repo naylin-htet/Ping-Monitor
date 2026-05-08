@@ -1,0 +1,99 @@
+// lib/services/background_service.dart
+// Wraps flutter_foreground_task so Android keeps pinging when minimised.
+// iOS background execution is OS-limited; we use BGTaskScheduler (fetch).
+
+import 'dart:isolate';
+import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
+class BackgroundService {
+  /// Configure the foreground task options once at startup.
+  static void init() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'ping_monitor_fg',
+        channelName: 'Ping Monitor',
+        channelDescription: 'Network monitoring is active',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        iconData: const NotificationIconData(
+          resType: ResourceType.mipmap,
+          resPrefix: ResourcePrefix.ic,
+          name: 'launcher',
+        ),
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(
+        showNotification: true,
+        playSound: false,
+      ),
+      foregroundTaskOptions: const ForegroundTaskOptions(
+        interval: 1000,
+        isOnceEvent: false,
+        autoRunOnBoot: false,
+        allowWakeLock: true,
+        allowWifiLock: true,
+      ),
+    );
+  }
+
+  /// Start the persistent foreground service.
+  static Future<bool> start(String host) async {
+    await FlutterForegroundTask.requestNotificationPermission();
+
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.stopService();
+    }
+
+    return FlutterForegroundTask.startService(
+      notificationTitle: 'Ping Monitor',
+      notificationText: 'Monitoring $host…',
+      callback: _startCallback,
+    );
+  }
+
+  /// Stop the foreground service.
+  static Future<bool> stop() async {
+    return FlutterForegroundTask.stopService();
+  }
+
+  /// Update the notification text with latest latency.
+  static Future<bool> updateNotification(String text) async {
+    return FlutterForegroundTask.updateService(
+      notificationTitle: 'Ping Monitor',
+      notificationText: text,
+    );
+  }
+
+  static Future<bool> get isRunning async =>
+      FlutterForegroundTask.isRunningService;
+}
+
+// ── Entry point for the background isolate ────────────────────
+@pragma('vm:entry-point')
+void _startCallback() {
+  FlutterForegroundTask.setTaskHandler(_PingTaskHandler());
+}
+
+class _PingTaskHandler extends TaskHandler {
+  @override
+  Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
+    debugPrint('[BG] Foreground task started');
+  }
+
+  @override
+  Future<void> onRepeatEvent(DateTime timestamp, SendPort? sendPort) async {
+    // Send a heartbeat tick to the main isolate via SendPort.
+    // The main isolate's PingController handles the actual ping.
+    sendPort?.send({'tick': timestamp.millisecondsSinceEpoch});
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {
+    debugPrint('[BG] Foreground task destroyed');
+  }
+
+  @override
+  void onNotificationPressed() {
+    FlutterForegroundTask.launchApp('/');
+  }
+}
