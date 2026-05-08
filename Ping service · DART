@@ -1,0 +1,110 @@
+// lib/services/ping_service.dart
+// Calls native Android (Kotlin ICMP) or iOS (Swift TCP/HTTP) ping
+// via MethodChannel. Falls back to Dart TCP probe on simulators.
+
+import 'dart:io';
+import 'package:flutter/services.dart';
+import '../models/models.dart';
+
+class PingService {
+  static const _channel = MethodChannel('com.pingmonitor.app/ping');
+
+  /// Execute one ping and return a [PingResult].
+  static Future<PingResult> ping({
+    required String host,
+    required int timeoutMs,
+  }) async {
+    try {
+      final raw = await _channel
+          .invokeMapMethod<String, dynamic>(
+            'ping',
+            {'host': host, 'timeout': timeoutMs},
+          )
+          .timeout(
+            Duration(milliseconds: timeoutMs + 2000),
+            onTimeout: () => null,
+          );
+
+      if (raw == null) return PingResult.failed(error: 'No response');
+
+      final success = raw['success'] as bool? ?? false;
+      final latency = raw['latency'] as int? ?? 0;
+      final error = raw['error'] as String?;
+
+      return PingResult(
+        success: success,
+        latency: latency,
+        timestamp: DateTime.now(),
+        error: error,
+      );
+    } on PlatformException catch (e) {
+      // Native threw — use Dart fallback
+      return _dartFallback(host: host, timeoutMs: timeoutMs);
+    } on MissingPluginException {
+      // No native plugin registered (desktop / unit tests)
+      return _dartFallback(host: host, timeoutMs: timeoutMs);
+    } catch (e) {
+      return PingResult.failed(error: e.toString());
+    }
+  }
+
+  // ── Dart TCP latency probe ───────────────────────────────
+  // Measures TCP handshake RTT — a reliable ICMP approximation.
+  static Future<PingResult> _dartFallback({
+    required String host,
+    required int timeoutMs,
+  }) async {
+    final sw = Stopwatch()..start();
+    try {
+      // Resolve hostname first
+      final addresses = await InternetAddress.lookup(host).timeout(
+        Duration(milliseconds: timeoutMs),
+      );
+      if (addresses.isEmpty) {
+        return PingResult.failed(error: 'Host not found');
+      }
+
+      final addr = addresses.first;
+      Socket? sock;
+
+      // Try port 80 then 443
+      for (final port in [80, 443]) {
+        try {
+          sock = await Socket.connect(addr, port,
+              timeout: Duration(milliseconds: timeoutMs));
+          break;
+        } on SocketException {
+          continue;
+        }
+      }
+
+      sw.stop();
+      sock?.destroy();
+
+      if (sock == null) {
+        return PingResult.failed(error: 'All ports unreachable');
+      }
+
+      return PingResult(
+        success: true,
+        latency: sw.elapsedMilliseconds,
+        timestamp: DateTime.now(),
+      );
+    } catch (e) {
+      sw.stop();
+      return PingResult.failed(error: e.toString());
+    }
+  }
+
+  /// Validate that [host] looks like a valid IP or hostname.
+  static bool isValidHost(String host) {
+    final h = host.trim();
+    if (h.isEmpty) return false;
+    final ipv4 = RegExp(
+        r'^((25[0-5]|(2[0-4]|1\d|[1-9]?)\d)\.){3}(25[0-5]|(2[0-4]|1\d|[1-9]?)\d)$');
+    if (ipv4.hasMatch(h)) return true;
+    final hostname = RegExp(
+        r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$');
+    return hostname.hasMatch(h);
+  }
+}
