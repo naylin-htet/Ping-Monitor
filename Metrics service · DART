@@ -1,0 +1,83 @@
+// lib/services/metrics_service.dart
+// Pure stateless computation — no side effects.
+
+import 'dart:math' as math;
+import '../models/models.dart';
+
+class MetricsService {
+  /// Compute [NetworkMetrics] from a list of [PingResult].
+  static NetworkMetrics calculate(
+    List<PingResult> results,
+    DateTime sessionStart,
+  ) {
+    if (results.isEmpty) {
+      return NetworkMetrics(
+        averageLatency: 0,
+        bestLatency: 0,
+        worstLatency: 0,
+        jitter: 0,
+        packetLoss: 0,
+        totalPings: 0,
+        successfulPings: 0,
+        sessionStart: sessionStart,
+      );
+    }
+
+    final total = results.length;
+    final successful = results.where((r) => r.success).toList();
+    final packetLoss =
+        ((total - successful.length) / total * 100.0);
+
+    if (successful.isEmpty) {
+      return NetworkMetrics(
+        averageLatency: 0,
+        bestLatency: 0,
+        worstLatency: 0,
+        jitter: 0,
+        packetLoss: packetLoss,
+        totalPings: total,
+        successfulPings: 0,
+        sessionStart: sessionStart,
+      );
+    }
+
+    final latencies = successful.map((r) => r.latency).toList();
+    final best = latencies.reduce(math.min);
+    final worst = latencies.reduce(math.max);
+    final average =
+        (latencies.reduce((a, b) => a + b) / latencies.length).round();
+    final jitter = _jitter(latencies);
+
+    return NetworkMetrics(
+      averageLatency: average,
+      bestLatency: best,
+      worstLatency: worst,
+      jitter: jitter,
+      packetLoss: packetLoss,
+      totalPings: total,
+      successfulPings: successful.length,
+      sessionStart: sessionStart,
+    );
+  }
+
+  // RFC 3550 EWMA jitter estimator
+  static double _jitter(List<int> latencies) {
+    if (latencies.length < 2) return 0.0;
+    double j = 0;
+    for (int i = 1; i < latencies.length; i++) {
+      j += ((latencies[i] - latencies[i - 1]).abs() - j) / 16.0;
+    }
+    return double.parse(j.toStringAsFixed(1));
+  }
+
+  /// Generate CSV string from results.
+  static String toCsv(List<PingResult> results, String host) {
+    final buf = StringBuffer();
+    buf.writeln('timestamp,host,success,latency_ms,error');
+    for (final r in results) {
+      buf.writeln('"${r.timestamp.toIso8601String()}",'
+          '"$host",${r.success},${r.latency},"${r.error ?? ''}"');
+    }
+    return buf.toString();
+  }
+}
