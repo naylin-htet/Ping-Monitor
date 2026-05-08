@@ -1,0 +1,78 @@
+// lib/providers/settings_provider.dart
+// Riverpod StateNotifier that loads / saves AppSettings via SharedPreferences.
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../models/models.dart';
+
+final settingsProvider =
+    StateNotifierProvider<SettingsNotifier, AppSettings>(
+  (ref) => SettingsNotifier(),
+);
+
+class SettingsNotifier extends StateNotifier<AppSettings> {
+  SettingsNotifier() : super(const AppSettings()) {
+    _load();
+  }
+
+  // ── Load ──────────────────────────────────────────────────
+  Future<void> _load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, dynamic>{};
+      for (final key in const [
+        'host', 'intervalMs', 'timeoutMs',
+        'soundEnabled', 'vibrationEnabled', 'voiceEnabled',
+        'backgroundMonitoring', 'darkMode', 'savedHosts',
+      ]) {
+        final v = prefs.get(key);
+        if (v != null) map[key] = v;
+      }
+      if (map.isNotEmpty) state = AppSettings.fromMap(map);
+    } catch (_) {}
+  }
+
+  // ── Save ──────────────────────────────────────────────────
+  Future<void> _save(AppSettings s) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = s.toMap();
+      for (final e in map.entries) {
+        final v = e.value;
+        if (v is String) await prefs.setString(e.key, v);
+        if (v is int) await prefs.setInt(e.key, v);
+        if (v is bool) await prefs.setBool(e.key, v);
+        if (v is double) await prefs.setDouble(e.key, v);
+      }
+    } catch (_) {}
+  }
+
+  // ── Public mutators ───────────────────────────────────────
+  Future<void> update(AppSettings s) async {
+    state = s;
+    await _save(s);
+  }
+
+  Future<void> setHost(String host) async {
+    final h = host.trim();
+    if (h.isEmpty) return;
+    final hosts = [...state.savedHosts];
+    if (!hosts.contains(h)) hosts.insert(0, h);
+    if (hosts.length > 12) hosts.removeLast();
+    await update(state.copyWith(host: h, savedHosts: hosts));
+  }
+
+  Future<void> removeHost(String host) async {
+    final hosts = state.savedHosts.where((s) => s != host).toList();
+    await update(state.copyWith(savedHosts: hosts));
+  }
+
+  Future<void> setInterval(int ms) => update(state.copyWith(intervalMs: ms));
+  Future<void> setTimeout(int ms) => update(state.copyWith(timeoutMs: ms));
+  Future<void> setSound(bool v) => update(state.copyWith(soundEnabled: v));
+  Future<void> setVibration(bool v) => update(state.copyWith(vibrationEnabled: v));
+  Future<void> setVoice(bool v) => update(state.copyWith(voiceEnabled: v));
+  Future<void> setBackground(bool v) => update(state.copyWith(backgroundMonitoring: v));
+  Future<void> setDarkMode(bool v) => update(state.copyWith(darkMode: v));
+  Future<void> resetDefaults() => update(const AppSettings());
+}
