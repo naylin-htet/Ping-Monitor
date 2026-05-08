@@ -1,0 +1,121 @@
+// lib/widgets/stats_card.dart
+import 'package:flutter/material.dart';
+import '../utils/app_theme.dart';
+
+class StatsCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final String unit;
+  final IconData icon;
+  final Color? valueColor;
+
+  const StatsCard({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.unit,
+    required this.icon,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = valueColor ??
+        (isDark ? AppColors.primary : AppColors.primaryDark);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.bgCard : AppColors.bgLightCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? AppColors.bgCardBorder : AppColors.bgLightBorder,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Label row
+          Row(
+            children: [
+              Icon(icon,
+                  size: 12,
+                  color: isDark
+                      ? AppColors.textSecondary
+                      : AppColors.textDarkSub),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.8,
+                    color: isDark
+                        ? AppColors.textSecondary
+                        : AppColors.textDarkSub,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          // Value + unit
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Flexible(
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: color,
+                    height: 1.0,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (unit.isNotEmpty) ...[
+                const SizedBox(width: 3),
+                Text(
+                  unit,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: isDark
+                        ? AppColors.textSecondary
+                        : AppColors.textDarkSub,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class StatsGrid extends StatelessWidget {
+  final List<StatsCard> cards;
+
+  const StatsGrid({super.key, required this.cards});
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      childAspectRatio: 1.6,
+      children: cards,
+    );
+  }
+}
