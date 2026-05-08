@@ -1,0 +1,207 @@
+// lib/utils/app_theme.dart
+import 'package:flutter/material.dart';
+
+class AppColors {
+  // Brand
+  static const Color primary = Color(0xFF00D4FF);
+  static const Color primaryDark = Color(0xFF0099BB);
+  static const Color accent = Color(0xFF7B61FF);
+
+  // Status / quality
+  static const Color excellent = Color(0xFF00E5A0);
+  static const Color good = Color(0xFF80E000);
+  static const Color fair = Color(0xFFFFB800);
+  static const Color poor = Color(0xFFFF6B35);
+  static const Color offline = Color(0xFFFF3B5C);
+
+  // Dark surfaces
+  static const Color bgBase = Color(0xFF080C14);
+  static const Color bgCard = Color(0xFF111827);
+  static const Color bgCardBorder = Color(0xFF1F2D40);
+  static const Color bgInput = Color(0xFF172030);
+
+  // Light surfaces
+  static const Color bgLightBase = Color(0xFFF0F4F8);
+  static const Color bgLightCard = Color(0xFFFFFFFF);
+  static const Color bgLightBorder = Color(0xFFDDE4EE);
+
+  // Text
+  static const Color textPrimary = Color(0xFFE8F0FF);
+  static const Color textSecondary = Color(0xFF7A8BA8);
+  static const Color textDark = Color(0xFF0D1B2A);
+  static const Color textDarkSub = Color(0xFF64748B);
+}
+
+class AppTheme {
+  static ThemeData darkTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: AppColors.bgBase,
+      primaryColor: AppColors.primary,
+      colorScheme: const ColorScheme.dark(
+        primary: AppColors.primary,
+        secondary: AppColors.accent,
+        surface: AppColors.bgCard,
+        error: AppColors.offline,
+        outline: AppColors.bgCardBorder,
+        onPrimary: AppColors.bgBase,
+        onSurface: AppColors.textPrimary,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColors.bgBase,
+        elevation: 0,
+        centerTitle: true,
+        foregroundColor: AppColors.textPrimary,
+        titleTextStyle: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.5,
+        ),
+        iconTheme: IconThemeData(color: AppColors.textPrimary),
+      ),
+      cardTheme: CardTheme(
+        color: AppColors.bgCard,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.bgCardBorder),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected)
+                ? AppColors.primary
+                : AppColors.textSecondary),
+        trackColor: WidgetStateProperty.resolveWith((s) =>
+            s.contains(WidgetState.selected)
+                ? AppColors.primary.withOpacity(0.3)
+                : AppColors.bgInput),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.bgInput,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.bgCardBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.bgCardBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.primary, width: 2),
+        ),
+        labelStyle: const TextStyle(color: AppColors.textSecondary),
+        hintStyle: const TextStyle(color: AppColors.textSecondary),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: AppColors.bgCardBorder,
+        thickness: 1,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: AppColors.bgCard,
+        contentTextStyle: const TextStyle(color: AppColors.textPrimary),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        behavior: SnackBarBehavior.floating,
+      ),
+      textTheme: const TextTheme(
+        displayLarge: TextStyle(color: AppColors.textPrimary, fontSize: 48, fontWeight: FontWeight.w800),
+        headlineLarge: TextStyle(color: AppColors.textPrimary, fontSize: 32, fontWeight: FontWeight.w700),
+        headlineMedium: TextStyle(color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.w600),
+        titleLarge: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w600),
+        titleMedium: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w500),
+        bodyLarge: TextStyle(color: AppColors.textPrimary, fontSize: 16),
+        bodyMedium: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+        bodySmall: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        labelLarge: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  static ThemeData lightTheme() {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: AppColors.bgLightBase,
+      primaryColor: AppColors.primaryDark,
+      colorScheme: const ColorScheme.light(
+        primary: AppColors.primaryDark,
+        secondary: AppColors.accent,
+        surface: AppColors.bgLightCard,
+        error: AppColors.offline,
+        outline: AppColors.bgLightBorder,
+        onPrimary: Colors.white,
+        onSurface: AppColors.textDark,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColors.bgLightCard,
+        elevation: 0,
+        centerTitle: true,
+        foregroundColor: AppColors.textDark,
+        titleTextStyle: TextStyle(
+          color: AppColors.textDark,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1.5,
+        ),
+        iconTheme: IconThemeData(color: AppColors.textDark),
+      ),
+      cardTheme: CardTheme(
+        color: AppColors.bgLightCard,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.bgLightBorder),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.bgLightBase,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.bgLightBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.bgLightBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.primaryDark, width: 2),
+        ),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: AppColors.bgLightBorder,
+        thickness: 1,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: AppColors.bgLightCard,
+        contentTextStyle: const TextStyle(color: AppColors.textDark),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        behavior: SnackBarBehavior.floating,
+      ),
+      textTheme: const TextTheme(
+        displayLarge: TextStyle(color: AppColors.textDark, fontSize: 48, fontWeight: FontWeight.w800),
+        headlineLarge: TextStyle(color: AppColors.textDark, fontSize: 32, fontWeight: FontWeight.w700),
+        headlineMedium: TextStyle(color: AppColors.textDark, fontSize: 24, fontWeight: FontWeight.w600),
+        titleLarge: TextStyle(color: AppColors.textDark, fontSize: 18, fontWeight: FontWeight.w600),
+        titleMedium: TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w500),
+        bodyLarge: TextStyle(color: AppColors.textDark, fontSize: 16),
+        bodyMedium: TextStyle(color: AppColors.textDarkSub, fontSize: 14),
+        bodySmall: TextStyle(color: AppColors.textDarkSub, fontSize: 12),
+        labelLarge: TextStyle(color: AppColors.textDark, fontSize: 14, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  static Color qualityColor(double packetLoss, int avgMs) {
+    if (packetLoss > 10 || avgMs == 0) return AppColors.offline;
+    if (packetLoss > 5 || avgMs > 300) return AppColors.poor;
+    if (packetLoss > 2 || avgMs > 150) return AppColors.fair;
+    if (avgMs > 50) return AppColors.good;
+    return AppColors.excellent;
+  }
+}
