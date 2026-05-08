@@ -1,0 +1,57 @@
+// lib/main.dart
+// Entry point: initialises Riverpod, background service config,
+// and launches the app with dark/light theming.
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'providers/settings_provider.dart';
+import 'screens/home_screen.dart';
+import 'services/alert_service.dart';
+import 'services/background_service.dart';
+import 'utils/app_theme.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Portrait only
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // Transparent status bar
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ),
+  );
+
+  // Initialise background foreground-task config
+  BackgroundService.init();
+
+  // Warm up TTS engine
+  await AlertService.init();
+
+  runApp(const ProviderScope(child: PingMonitorApp()));
+}
+
+class PingMonitorApp extends ConsumerWidget {
+  const PingMonitorApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settings = ref.watch(settingsProvider);
+
+    return MaterialApp(
+      title: 'Ping Monitor',
+      debugShowCheckedModeBanner: false,
+      themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
+      theme: AppTheme.lightTheme(),
+      darkTheme: AppTheme.darkTheme(),
+      home: const HomeScreen(),
+    );
+  }
+}
