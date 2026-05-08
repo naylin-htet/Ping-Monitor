@@ -1,0 +1,37 @@
+// lib/services/export_service.dart
+// Generates a CSV file and opens the OS share sheet.
+
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../models/models.dart';
+import 'metrics_service.dart';
+
+class ExportService {
+  static Future<void> exportCsv({
+    required List<PingResult> results,
+    required String host,
+  }) async {
+    if (results.isEmpty) return;
+
+    try {
+      final csv = MetricsService.toCsv(results, host);
+      final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final name = 'ping_log_${host.replaceAll('.', '_')}_$stamp.csv';
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$name');
+      await file.writeAsString(csv);
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'Ping Monitor Log — $host',
+        text: 'Exported ${results.length} ping records from Ping Monitor.',
+      );
+    } catch (e) {
+      debugPrint('Export failed: $e');
+      rethrow;
+    }
+  }
+}
