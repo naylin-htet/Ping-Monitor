@@ -1,0 +1,99 @@
+// lib/services/alert_service.dart
+// Manages sound, vibration, and TTS voice alerts.
+// All methods are static and safe to call from any context.
+
+import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:vibration/vibration.dart';
+
+class AlertService {
+  static final AudioPlayer _player = AudioPlayer();
+  static final FlutterTts _tts = FlutterTts();
+  static bool _ttsReady = false;
+
+  /// Call once at app start to warm-up the TTS engine.
+  static Future<void> init() async {
+    try {
+      await _tts.setLanguage('en-US');
+      await _tts.setSpeechRate(0.75);
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
+      _ttsReady = true;
+    } catch (e) {
+      debugPrint('TTS init failed: $e');
+    }
+  }
+
+  // ── Public API ─────────────────────────────────────────────
+
+  /// Fire all enabled failure alerts concurrently.
+  static Future<void> triggerFailure({
+    required bool sound,
+    required bool vibration,
+    required bool voice,
+  }) async {
+    await Future.wait([
+      if (sound) _playSound(),
+      if (vibration) _vibrate(),
+      if (voice) _speak('Ping failed'),
+    ]);
+  }
+
+  /// Fire restore notification.
+  static Future<void> triggerRestore({
+    required bool sound,
+    required bool vibration,
+    required bool voice,
+  }) async {
+    await Future.wait([
+      if (sound) _playSound(),
+      if (vibration) _vibrateDouble(),
+      if (voice) _speak('Connection restored'),
+    ]);
+  }
+
+  // ── Internal ───────────────────────────────────────────────
+
+  static Future<void> _playSound() async {
+    try {
+      await _player.stop();
+      await _player.play(AssetSource('sounds/alert.mp3'));
+    } catch (e) {
+      debugPrint('Sound alert failed: $e');
+    }
+  }
+
+  static Future<void> _vibrate() async {
+    try {
+      final ok = await Vibration.hasVibrator() ?? false;
+      if (ok) Vibration.vibrate(duration: 400, amplitude: 180);
+    } catch (e) {
+      debugPrint('Vibration failed: $e');
+    }
+  }
+
+  static Future<void> _vibrateDouble() async {
+    try {
+      final ok = await Vibration.hasVibrator() ?? false;
+      if (ok) Vibration.vibrate(pattern: [0, 150, 80, 150]);
+    } catch (e) {
+      debugPrint('Vibration pattern failed: $e');
+    }
+  }
+
+  static Future<void> _speak(String msg) async {
+    if (!_ttsReady) return;
+    try {
+      await _tts.stop();
+      await _tts.speak(msg);
+    } catch (e) {
+      debugPrint('TTS speak failed: $e');
+    }
+  }
+
+  static Future<void> dispose() async {
+    await _player.dispose();
+    await _tts.stop();
+  }
+}
