@@ -1,0 +1,231 @@
+// lib/models/models.dart
+// All data models: PingResult, NetworkMetrics, AppSettings, NetworkQuality
+
+// ─────────────────────────────────────────────────────────────
+// PingResult
+// ─────────────────────────────────────────────────────────────
+class PingResult {
+  final bool success;
+  final int latency; // ms (0 when failed)
+  final DateTime timestamp;
+  final String? error;
+
+  const PingResult({
+    required this.success,
+    required this.latency,
+    required this.timestamp,
+    this.error,
+  });
+
+  factory PingResult.failed({String? error}) => PingResult(
+        success: false,
+        latency: 0,
+        timestamp: DateTime.now(),
+        error: error ?? 'Timeout',
+      );
+
+  String get latencyStr => success ? '${latency}ms' : '—';
+  bool get isHighLatency => latency > 200;
+}
+
+// ─────────────────────────────────────────────────────────────
+// NetworkMetrics
+// ─────────────────────────────────────────────────────────────
+class NetworkMetrics {
+  final int averageLatency;
+  final int bestLatency;
+  final int worstLatency;
+  final double jitter;
+  final double packetLoss; // 0–100 %
+  final int totalPings;
+  final int successfulPings;
+  final DateTime sessionStart;
+
+  const NetworkMetrics({
+    required this.averageLatency,
+    required this.bestLatency,
+    required this.worstLatency,
+    required this.jitter,
+    required this.packetLoss,
+    required this.totalPings,
+    required this.successfulPings,
+    required this.sessionStart,
+  });
+
+  factory NetworkMetrics.empty() => NetworkMetrics(
+        averageLatency: 0,
+        bestLatency: 0,
+        worstLatency: 0,
+        jitter: 0.0,
+        packetLoss: 0.0,
+        totalPings: 0,
+        successfulPings: 0,
+        sessionStart: DateTime.now(),
+      );
+
+  Duration get sessionDuration => DateTime.now().difference(sessionStart);
+
+  String get sessionDurationStr {
+    final d = sessionDuration;
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    final s = d.inSeconds % 60;
+    if (h > 0) return '${h}h ${m}m ${s}s';
+    if (m > 0) return '${m}m ${s}s';
+    return '${s}s';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// AppSettings
+// ─────────────────────────────────────────────────────────────
+class AppSettings {
+  final String host;
+  final int intervalMs;
+  final int timeoutMs;
+  final bool soundEnabled;
+  final bool vibrationEnabled;
+  final bool voiceEnabled;
+  final bool backgroundMonitoring;
+  final bool darkMode;
+  final List<String> savedHosts;
+
+  const AppSettings({
+    this.host = '8.8.8.8',
+    this.intervalMs = 1000,
+    this.timeoutMs = 4000,
+    this.soundEnabled = true,
+    this.vibrationEnabled = true,
+    this.voiceEnabled = false,
+    this.backgroundMonitoring = true,
+    this.darkMode = true,
+    this.savedHosts = const ['8.8.8.8', '1.1.1.1', '9.9.9.9'],
+  });
+
+  AppSettings copyWith({
+    String? host,
+    int? intervalMs,
+    int? timeoutMs,
+    bool? soundEnabled,
+    bool? vibrationEnabled,
+    bool? voiceEnabled,
+    bool? backgroundMonitoring,
+    bool? darkMode,
+    List<String>? savedHosts,
+  }) =>
+      AppSettings(
+        host: host ?? this.host,
+        intervalMs: intervalMs ?? this.intervalMs,
+        timeoutMs: timeoutMs ?? this.timeoutMs,
+        soundEnabled: soundEnabled ?? this.soundEnabled,
+        vibrationEnabled: vibrationEnabled ?? this.vibrationEnabled,
+        voiceEnabled: voiceEnabled ?? this.voiceEnabled,
+        backgroundMonitoring: backgroundMonitoring ?? this.backgroundMonitoring,
+        darkMode: darkMode ?? this.darkMode,
+        savedHosts: savedHosts ?? this.savedHosts,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'host': host,
+        'intervalMs': intervalMs,
+        'timeoutMs': timeoutMs,
+        'soundEnabled': soundEnabled,
+        'vibrationEnabled': vibrationEnabled,
+        'voiceEnabled': voiceEnabled,
+        'backgroundMonitoring': backgroundMonitoring,
+        'darkMode': darkMode,
+        'savedHosts': savedHosts.join(','),
+      };
+
+  factory AppSettings.fromMap(Map<String, dynamic> m) => AppSettings(
+        host: m['host'] as String? ?? '8.8.8.8',
+        intervalMs: m['intervalMs'] as int? ?? 1000,
+        timeoutMs: m['timeoutMs'] as int? ?? 4000,
+        soundEnabled: m['soundEnabled'] as bool? ?? true,
+        vibrationEnabled: m['vibrationEnabled'] as bool? ?? true,
+        voiceEnabled: m['voiceEnabled'] as bool? ?? false,
+        backgroundMonitoring: m['backgroundMonitoring'] as bool? ?? true,
+        darkMode: m['darkMode'] as bool? ?? true,
+        savedHosts:
+            (m['savedHosts'] as String? ?? '8.8.8.8,1.1.1.1,9.9.9.9')
+                .split(',')
+                .where((s) => s.isNotEmpty)
+                .toList(),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────
+// NetworkQuality
+// ─────────────────────────────────────────────────────────────
+enum QualityLevel { excellent, good, fair, poor, offline }
+
+class NetworkQuality {
+  final QualityLevel level;
+  final String label;
+  final String description;
+  final int bars; // 0–5
+
+  const NetworkQuality._({
+    required this.level,
+    required this.label,
+    required this.description,
+    required this.bars,
+  });
+
+  factory NetworkQuality.fromMetrics(NetworkMetrics m) {
+    if (m.totalPings == 0) {
+      return const NetworkQuality._(
+        level: QualityLevel.offline,
+        label: 'No Data',
+        description: 'Start monitoring to see quality',
+        bars: 0,
+      );
+    }
+    if (m.packetLoss > 10 || m.averageLatency == 0) {
+      return const NetworkQuality._(
+        level: QualityLevel.offline,
+        label: 'Offline',
+        description: 'No connection detected',
+        bars: 0,
+      );
+    }
+    if (m.packetLoss > 5 || m.averageLatency > 300) {
+      return const NetworkQuality._(
+        level: QualityLevel.poor,
+        label: 'Poor',
+        description: 'High latency or packet loss',
+        bars: 1,
+      );
+    }
+    if (m.packetLoss > 2 || m.averageLatency > 150) {
+      return const NetworkQuality._(
+        level: QualityLevel.fair,
+        label: 'Fair',
+        description: 'Moderate latency detected',
+        bars: 2,
+      );
+    }
+    if (m.averageLatency > 80) {
+      return const NetworkQuality._(
+        level: QualityLevel.good,
+        label: 'Good',
+        description: 'Acceptable performance',
+        bars: 3,
+      );
+    }
+    if (m.averageLatency > 40) {
+      return const NetworkQuality._(
+        level: QualityLevel.good,
+        label: 'Good',
+        description: 'Good latency',
+        bars: 4,
+      );
+    }
+    return const NetworkQuality._(
+      level: QualityLevel.excellent,
+      label: 'Excellent',
+      description: 'Optimal connection',
+      bars: 5,
+    );
+  }
+}
