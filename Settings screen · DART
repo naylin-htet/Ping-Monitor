@@ -1,0 +1,511 @@
+// lib/screens/settings_screen.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers/ping_provider.dart';
+import '../providers/settings_provider.dart';
+import '../utils/app_theme.dart';
+
+class SettingsScreen extends ConsumerStatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  final _hostCtrl = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+
+  static const _intervalOpts = {
+    '500 ms': 500,
+    '1 s': 1000,
+    '2 s': 2000,
+    '5 s': 5000,
+    '10 s': 10000,
+    '30 s': 30000,
+  };
+
+  static const _timeoutOpts = {
+    '2 s': 2000,
+    '3 s': 3000,
+    '5 s': 5000,
+    '10 s': 10000,
+    '30 s': 30000,
+  };
+
+  static const _quickHosts = {
+    'Google DNS': '8.8.8.8',
+    'Cloudflare': '1.1.1.1',
+    'Quad9': '9.9.9.9',
+    'OpenDNS': '208.67.222.222',
+    'localhost': '127.0.0.1',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _hostCtrl.text = ref.read(settingsProvider).host;
+  }
+
+  @override
+  void dispose() {
+    _hostCtrl.dispose();
+    super.dispose();
+  }
+
+  void _applyHost() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    ref.read(settingsProvider.notifier).setHost(_hostCtrl.text.trim());
+    FocusScope.of(context).unfocus();
+    _snack('Host updated');
+  }
+
+  Future<void> _resetDefaults() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Reset Settings'),
+        content: const Text('Restore all settings to defaults?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Reset')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await ref.read(settingsProvider.notifier).resetDefaults();
+      if (mounted) {
+        _hostCtrl.text = ref.read(settingsProvider).host;
+        _snack('Settings reset to defaults');
+      }
+    }
+  }
+
+  void _snack(String msg) {
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(settingsProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isRunning = ref.watch(isRunningProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('SETTINGS'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _resetDefaults,
+            child: Text('Reset',
+                style: TextStyle(
+                    color: AppColors.offline, fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+          children: [
+            // ── Host ──────────────────────────────────────────
+            _header('TARGET HOST'),
+            _card(isDark, [
+              // Text field
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _hostCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Host / IP address',
+                        hintText: '8.8.8.8 or example.com',
+                        prefixIcon: Icon(Icons.dns_rounded, size: 18),
+                      ),
+                      keyboardType: TextInputType.url,
+                      textInputAction: TextInputAction.done,
+                      onFieldSubmitted: (_) => _applyHost(),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Required' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: FilledButton(
+                      onPressed: _applyHost,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(60, 50),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Set'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // Quick-select chips
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: _quickHosts.entries.map((e) {
+                  final sel = s.host == e.value;
+                  return ChoiceChip(
+                    label: Text(e.key,
+                        style: const TextStyle(fontSize: 12)),
+                    selected: sel,
+                    onSelected: (_) {
+                      _hostCtrl.text = e.value;
+                      ref.read(settingsProvider.notifier).setHost(e.value);
+                    },
+                    selectedColor: AppColors.primary.withOpacity(0.18),
+                    checkmarkColor: AppColors.primary,
+                  );
+                }).toList(),
+              ),
+              // Saved hosts (custom ones not in quick list)
+              if (s.savedHosts
+                  .where((h) => !_quickHosts.values.contains(h))
+                  .isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                _sectionLabel(isDark, 'SAVED HOSTS'),
+                const SizedBox(height: 6),
+                ...s.savedHosts
+                    .where((h) => !_quickHosts.values.contains(h))
+                    .map((h) => _SavedHostRow(
+                          host: h,
+                          selected: s.host == h,
+                          onSelect: () {
+                            _hostCtrl.text = h;
+                            ref.read(settingsProvider.notifier).setHost(h);
+                          },
+                          onDelete: () =>
+                              ref.read(settingsProvider.notifier).removeHost(h),
+                        )),
+              ],
+            ]),
+            const SizedBox(height: 20),
+
+            // ── Timing ────────────────────────────────────────
+            _header('TIMING'),
+            _card(isDark, [
+              _DropRow<int>(
+                icon: Icons.timer_outlined,
+                label: 'Ping Interval',
+                value: s.intervalMs,
+                opts: _intervalOpts,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setInterval(v),
+                enabled: !isRunning,
+              ),
+              const Divider(height: 24),
+              _DropRow<int>(
+                icon: Icons.hourglass_bottom_rounded,
+                label: 'Timeout',
+                value: s.timeoutMs,
+                opts: _timeoutOpts,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setTimeout(v),
+                enabled: !isRunning,
+              ),
+            ]),
+            if (isRunning)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 4),
+                child: Text('Stop monitoring to change timing.',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: isDark
+                            ? AppColors.textSecondary
+                            : AppColors.textDarkSub)),
+              ),
+            const SizedBox(height: 20),
+
+            // ── Alerts ────────────────────────────────────────
+            _header('ALERTS'),
+            _card(isDark, [
+              _SwitchRow(
+                icon: Icons.volume_up_rounded,
+                label: 'Sound Alert',
+                subtitle: 'Play beep on ping failure',
+                value: s.soundEnabled,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setSound(v),
+              ),
+              const Divider(height: 24),
+              _SwitchRow(
+                icon: Icons.vibration_rounded,
+                label: 'Vibration',
+                subtitle: 'Vibrate device on failure',
+                value: s.vibrationEnabled,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setVibration(v),
+              ),
+              const Divider(height: 24),
+              _SwitchRow(
+                icon: Icons.record_voice_over_rounded,
+                label: 'Voice Alert (TTS)',
+                subtitle: 'Speak "Ping failed" aloud',
+                value: s.voiceEnabled,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setVoice(v),
+              ),
+            ]),
+            const SizedBox(height: 20),
+
+            // ── Background & Display ──────────────────────────
+            _header('BACKGROUND & DISPLAY'),
+            _card(isDark, [
+              _SwitchRow(
+                icon: Icons.run_circle_outlined,
+                label: 'Background Monitoring',
+                subtitle: 'Android foreground service keeps pinging',
+                value: s.backgroundMonitoring,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setBackground(v),
+              ),
+              const Divider(height: 24),
+              _SwitchRow(
+                icon: Icons.dark_mode_rounded,
+                label: 'Dark Mode',
+                subtitle: 'Use dark colour scheme',
+                value: s.darkMode,
+                onChanged: (v) =>
+                    ref.read(settingsProvider.notifier).setDarkMode(v),
+              ),
+            ]),
+            const SizedBox(height: 20),
+
+            // ── About ─────────────────────────────────────────
+            _header('ABOUT'),
+            _card(isDark, [
+              _InfoRow(label: 'Version', value: '1.0.0'),
+              const Divider(height: 20),
+              _InfoRow(label: 'SDK', value: 'Flutter 3.x + Riverpod'),
+              const Divider(height: 20),
+              _InfoRow(label: 'Android Ping', value: 'Real ICMP via /system/bin/ping'),
+              const Divider(height: 20),
+              _InfoRow(label: 'iOS Ping', value: 'TCP / HTTP latency probe'),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _header(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 8, left: 2),
+        child: Text(t,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+              color: AppColors.textSecondary,
+            )),
+      );
+
+  Widget _sectionLabel(bool isDark, String t) => Text(t,
+      style: TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.2,
+        color: isDark ? AppColors.textSecondary : AppColors.textDarkSub,
+      ));
+
+  Widget _card(bool isDark, List<Widget> children) => Container(
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 4),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.bgCard : AppColors.bgLightCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color:
+                isDark ? AppColors.bgCardBorder : AppColors.bgLightBorder,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        ),
+      );
+}
+
+// ── Sub-widgets ───────────────────────────────────────────────
+
+class _SavedHostRow extends StatelessWidget {
+  final String host;
+  final bool selected;
+  final VoidCallback onSelect;
+  final VoidCallback onDelete;
+
+  const _SavedHostRow({
+    required this.host,
+    required this.selected,
+    required this.onSelect,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+        size: 18,
+        color: selected ? AppColors.primary : null,
+      ),
+      title: Text(host, style: const TextStyle(fontSize: 13)),
+      trailing: IconButton(
+        icon: Icon(Icons.close_rounded,
+            size: 16, color: AppColors.offline.withOpacity(0.7)),
+        onPressed: onDelete,
+      ),
+      onTap: onSelect,
+    );
+  }
+}
+
+class _DropRow<T> extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final T value;
+  final Map<String, T> opts;
+  final ValueChanged<T> onChanged;
+  final bool enabled;
+
+  const _DropRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.opts,
+    required this.onChanged,
+    this.enabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      children: [
+        Icon(icon,
+            size: 17,
+            color:
+                isDark ? AppColors.textSecondary : AppColors.textDarkSub),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(label,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500)),
+        ),
+        DropdownButtonHideUnderline(
+          child: DropdownButton<T>(
+            value: value,
+            onChanged: enabled
+                ? (v) {
+                    if (v != null) onChanged(v);
+                  }
+                : null,
+            borderRadius: BorderRadius.circular(12),
+            items: opts.entries
+                .map((e) => DropdownMenuItem(
+                      value: e.value,
+                      child: Text(e.key,
+                          style: const TextStyle(fontSize: 13)),
+                    ))
+                .toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SwitchRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _SwitchRow({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      children: [
+        Icon(icon,
+            size: 17,
+            color:
+                isDark ? AppColors.textSecondary : AppColors.textDarkSub),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500)),
+              Text(subtitle,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark
+                        ? AppColors.textSecondary
+                        : AppColors.textDarkSub,
+                  )),
+            ],
+          ),
+        ),
+        Switch(value: value, onChanged: onChanged),
+      ],
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      children: [
+        Text(label,
+            style: TextStyle(
+                fontSize: 13,
+                color: isDark
+                    ? AppColors.textSecondary
+                    : AppColors.textDarkSub)),
+        const Spacer(),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+}
