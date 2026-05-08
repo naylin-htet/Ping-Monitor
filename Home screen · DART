@@ -1,0 +1,290 @@
+// lib/screens/home_screen.dart
+// Main monitoring dashboard: graph, quality, stats, ping log, button.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../models/models.dart';
+import '../providers/ping_provider.dart';
+import '../providers/settings_provider.dart';
+import '../services/export_service.dart';
+import '../utils/app_theme.dart';
+import '../widgets/latency_graph.dart';
+import '../widgets/monitor_button.dart';
+import '../widgets/ping_ticker.dart';
+import '../widgets/quality_indicator.dart';
+import '../widgets/stats_card.dart';
+import 'settings_screen.dart';
+
+class HomeScreen extends ConsumerWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final state = ref.watch(monitorProvider);
+    final settings = ref.watch(settingsProvider);
+    final quality = ref.watch(qualityProvider);
+    final points = ref.watch(graphPointsProvider);
+    final isRunning = ref.watch(isRunningProvider);
+    final metrics = state.metrics;
+
+    return Scaffold(
+      appBar: _buildAppBar(
+        context,
+        ref,
+        isDark,
+        quality,
+        isRunning,
+        state.results,
+        settings.host,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 110),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // ── Host + status ──────────────────────────────
+              _HostStatusBar(
+                host: settings.host,
+                message: state.statusMessage,
+                isRunning: isRunning,
+              ),
+              const SizedBox(height: 12),
+
+              // ── Quality indicator ──────────────────────────
+              QualityIndicator(quality: quality),
+              const SizedBox(height: 12),
+
+              // ── Live graph ─────────────────────────────────
+              LatencyGraph(points: points),
+              const SizedBox(height: 12),
+
+              // ── Stats grid ─────────────────────────────────
+              _buildStats(context, metrics),
+              const SizedBox(height: 12),
+
+              // ── Ping log ───────────────────────────────────
+              PingTicker(results: state.results),
+            ],
+          ),
+        ),
+      ),
+
+      // ── Start / Stop floating button ───────────────────────
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: MonitorButton(
+          isRunning: isRunning,
+          onPressed: () {
+            final ctrl = ref.read(monitorProvider.notifier);
+            if (isRunning) {
+              ctrl.stop();
+            } else {
+              ctrl.start();
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  AppBar _buildAppBar(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDark,
+    NetworkQuality quality,
+    bool isRunning,
+    List<PingResult> results,
+    String host,
+  ) {
+    return AppBar(
+      title: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('PING MONITOR'),
+          const SizedBox(height: 3),
+          QualityIndicator(quality: quality, compact: true),
+        ],
+      ),
+      actions: [
+        // Export
+        IconButton(
+          icon: const Icon(Icons.upload_rounded, size: 20),
+          tooltip: 'Export CSV',
+          onPressed: () async {
+            if (results.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('No data to export yet.')),
+              );
+              return;
+            }
+            try {
+              await ExportService.exportCsv(results: results, host: host);
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Export failed: $e')),
+                );
+              }
+            }
+          },
+        ),
+        // Reset
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, size: 20),
+          tooltip: 'Reset',
+          onPressed: isRunning
+              ? null
+              : () => ref.read(monitorProvider.notifier).reset(),
+        ),
+        // Settings
+        IconButton(
+          icon: const Icon(Icons.settings_rounded, size: 20),
+          tooltip: 'Settings',
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStats(BuildContext context, NetworkMetrics m) {
+    final has = m.totalPings > 0;
+    String fmt(int v) => has ? '$v' : '—';
+    String fmtD(double v) => has ? v.toStringAsFixed(1) : '—';
+
+    return StatsGrid(
+      cards: [
+        StatsCard(
+          label: 'Average',
+          value: fmt(m.averageLatency),
+          unit: 'ms',
+          icon: Icons.analytics_outlined,
+          valueColor: has
+              ? AppTheme.qualityColor(m.packetLoss, m.averageLatency)
+              : null,
+        ),
+        StatsCard(
+          label: 'Best',
+          value: fmt(m.bestLatency),
+          unit: 'ms',
+          icon: Icons.arrow_downward_rounded,
+          valueColor: AppColors.excellent,
+        ),
+        StatsCard(
+          label: 'Worst',
+          value: fmt(m.worstLatency),
+          unit: 'ms',
+          icon: Icons.arrow_upward_rounded,
+          valueColor: AppColors.poor,
+        ),
+        StatsCard(
+          label: 'Jitter',
+          value: fmtD(m.jitter),
+          unit: 'ms',
+          icon: Icons.swap_vert_rounded,
+          valueColor: AppColors.fair,
+        ),
+        StatsCard(
+          label: 'Packet Loss',
+          value: fmtD(m.packetLoss),
+          unit: '%',
+          icon: Icons.signal_wifi_bad_rounded,
+          valueColor: has && m.packetLoss > 2 ? AppColors.offline : AppColors.excellent,
+        ),
+        StatsCard(
+          label: 'Session',
+          value: has ? m.sessionDurationStr : '—',
+          unit: '',
+          icon: Icons.timer_outlined,
+        ),
+      ],
+    );
+  }
+}
+
+// ── Host + status banner ──────────────────────────────────────
+class _HostStatusBar extends StatelessWidget {
+  final String host;
+  final String message;
+  final bool isRunning;
+
+  const _HostStatusBar({
+    required this.host,
+    required this.message,
+    required this.isRunning,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.bgCard : AppColors.bgLightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isRunning
+              ? AppColors.primary.withOpacity(0.4)
+              : (isDark ? AppColors.bgCardBorder : AppColors.bgLightBorder),
+          width: isRunning ? 1.5 : 1.0,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.dns_rounded,
+              size: 15,
+              color: isRunning
+                  ? AppColors.primary
+                  : (isDark
+                      ? AppColors.textSecondary
+                      : AppColors.textDarkSub)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(host,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? AppColors.textPrimary : AppColors.textDark,
+                    )),
+                const SizedBox(height: 1),
+                Text(message,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark
+                          ? AppColors.textSecondary
+                          : AppColors.textDarkSub,
+                    )),
+              ],
+            ),
+          ),
+          if (isRunning)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text('LIVE',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                    letterSpacing: 1.5,
+                  )),
+            ),
+        ],
+      ),
+    );
+  }
+}
